@@ -4,16 +4,11 @@
 
 Автор учебного содержания — Рахметқұлова Жаңыл Рахметқұлқызы (№6 орта мектебі).
 
-- Статический сайт, сборка не нужна: Netlify и Cloudflare Pages.
-- Облако: [Supabase](https://supabase.com) (Auth + Postgres + RLS), библиотека `supabase-js` лежит в `js/vendor-supabase.js`.
-- Без настройки сайт работает в демо-режиме на localStorage.
-
-Установка и подключение базы — в [SETUP.md](SETUP.md).
+- Статический сайт без сборки и без сервера: публикуется на Vercel прямо из этого репозитория (`vercel.json`).
+- Аккаунты, классы и прогресс хранятся в localStorage браузера — внешних баз данных нет.
 
 ## Разработка
 
 ```bash
 python3 -m http.server 8000   # http://localhost:8000
 ```
-
-Тесты схемы БД: `supabase/schema.sql` проверяется на PGlite (настоящий Postgres в WASM), сценарий — в `tests/schema.test.mjs`.

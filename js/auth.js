@@ -35,7 +35,6 @@ const Auth = (() => {
     </form>`;
   }
   function paint() {
-    const demo = Cloud.mode === 'demo';
     root().innerHTML = `<div class="auth">
       <aside class="auth-art" aria-hidden="true">
         <div class="auth-brand"><span class="logo">m<i></i></span><span>MathQuest</span></div>
@@ -55,7 +54,7 @@ const Auth = (() => {
           <div class="seg seg-full" role="tablist"><button role="tab" data-auth-tab="login" class="${tab === 'login' ? 'is-on' : ''}" aria-selected="${tab === 'login'}">Кіру</button><button role="tab" data-auth-tab="signup" class="${tab === 'signup' ? 'is-on' : ''}" aria-selected="${tab === 'signup'}">Тіркелу</button></div>
           ${tab === 'signup' ? `<div class="role-pick" role="radiogroup" aria-label="Кім ретінде тіркелесіз"><button role="radio" aria-checked="${kind === 'student'}" data-auth-kind="student" class="${kind === 'student' ? 'is-on' : ''}"><b>Оқушымын</b><small>Тапсырма орындаймын</small></button><button role="radio" aria-checked="${kind === 'teacher'}" data-auth-kind="teacher" class="${kind === 'teacher' ? 'is-on' : ''}"><b>Мұғаліммін</b><small>Сыныпты бақылаймын</small></button></div>` : ''}
           ${tab === 'login' ? formLogin() : kind === 'student' ? formStudent() : formTeacher()}
-          ${demo ? `<p class="auth-demo"><b>Демо режим:</b> аккаунттар тек осы браузерде сақталады. Нақты сынып үшін Supabase қосу керек (SETUP.md).</p>` : ''}
+          <p class="auth-demo">Аккаунттар осы браузерде сақталады.</p>
           <button class="auth-guest" data-auth-guest>Тіркелмей жалғастыру</button>
         </div>
       </main></div>`;

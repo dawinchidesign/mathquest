@@ -1,9 +1,7 @@
 'use strict';
 /*
  * MathQuest Cloud — аккаунттар, сыныптар және прогресс.
- * Бір API, екі іске асыру:
- *   • Supabase (config.js толтырылса) — нақты ортақ дерекқор;
- *   • Демо — барлығы осы браузердің localStorage-інде.
+ * Барлық деректер осы браузердің localStorage-інде сақталады (сервер жоқ).
  */
 const Cloud = (() => {
   const cfg = window.MATHQUEST_CONFIG || {};
@@ -20,7 +18,6 @@ const Cloud = (() => {
   }
 
   function cacheProfile(p) { try { p ? localStorage.setItem(PROFILE_CACHE, JSON.stringify(p)) : localStorage.removeItem(PROFILE_CACHE); } catch {} }
-  function cachedProfile() { try { return JSON.parse(localStorage.getItem(PROFILE_CACHE)); } catch { return null; } }
 
   function validateSignup(kind, d) {
     if (!String(d.full_name || '').trim()) throw new CloudError('name_required');
@@ -31,139 +28,7 @@ const Cloud = (() => {
   }
 
   /* ------------------------------------------------------------------ */
-  /* Supabase                                                            */
-  /* ------------------------------------------------------------------ */
-  function supabaseBackend() {
-    const sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, {
-      auth: { persistSession: true, autoRefreshToken: true, storageKey: 'mathquest-auth' }
-    });
-    let user = null;
-
-    const mapErr = (e, ctx) => {
-      if (e instanceof CloudError) return e;
-      const m = `${e?.message || ''} ${e?.code || ''} ${e?.error_code || ''}`;
-      if (/Failed to fetch|NetworkError|Load failed|network/i.test(m)) return new CloudError('network', m);
-      if (/invalid.login.credentials|invalid_credentials/i.test(m)) return new CloudError('invalid_credentials', m);
-      if (/email.not.confirmed/i.test(m)) return new CloudError('email_not_confirmed', m);
-      if (/already registered|user_already_exists|email_exists/i.test(m)) return new CloudError(ctx === 'student' ? 'login_taken' : 'email_taken', m);
-      if (/Database error saving new user/i.test(m)) return new CloudError(ctx === 'student' ? 'login_taken' : 'unknown', m);
-      if (/weak_password|Password should/i.test(m)) return new CloudError('weak_password', m);
-      if (/rate.limit|over_email_send_rate|429/i.test(m)) return new CloudError('rate_limit', m);
-      if (/class_not_found/.test(m)) return new CloudError('class_not_found', m);
-      if (/only_students/.test(m)) return new CloudError('only_students', m);
-      if (/only_teachers|not_your|42501|permission denied/i.test(m)) return new CloudError('forbidden', m);
-      if (/signup.*disabled|signups not allowed/i.test(m)) return new CloudError('signup_disabled', m);
-      return new CloudError('unknown', m);
-    };
-    const run = async (promise, ctx) => {
-      let res;
-      try { res = await promise; } catch (e) { throw mapErr(e, ctx); }
-      if (res.error) throw mapErr(res.error, ctx);
-      return res.data;
-    };
-
-    async function loadProfile(authUser) {
-      const data = await run(sb.from('profiles').select('id, role, full_name, login, school').eq('id', authUser.id).maybeSingle());
-      if (!data) throw new CloudError('profile_missing');
-      user = { ...data, email: data.login ? null : authUser.email };
-      cacheProfile(user);
-      return user;
-    }
-
-    return {
-      mode: 'supabase',
-      get user() { return user; },
-      async init() {
-        const { data } = await sb.auth.getSession();
-        const session = data?.session;
-        if (!session) { cacheProfile(null); return null; }
-        try { return await loadProfile(session.user); }
-        catch (e) {
-          const c = cachedProfile();
-          if (e.code === 'network' && c && c.id === session.user.id) return (user = c);
-          throw e;
-        }
-      },
-      async signIn(identifier, password) {
-        const id = String(identifier || '').trim();
-        const email = id.includes('@') ? id.toLowerCase() : loginEmail(id);
-        const data = await run(sb.auth.signInWithPassword({ email, password }));
-        return loadProfile(data.user);
-      },
-      async signUpTeacher(d) {
-        validateSignup('teacher', d);
-        const data = await run(sb.auth.signUp({
-          email: d.email.trim().toLowerCase(), password: d.password,
-          options: { data: { role: 'teacher', full_name: d.full_name.trim(), school: (d.school || '').trim() } }
-        }), 'teacher');
-        if (!data.session) throw new CloudError('email_confirm');
-        return loadProfile(data.user);
-      },
-      async signUpStudent(d) {
-        validateSignup('student', d);
-        const login = normLogin(d.login);
-        if (!(await run(sb.rpc('login_available', { p_login: login })))) throw new CloudError('login_taken');
-        const code = normCode(d.class_code);
-        if (code && !(await this.classPreview(code))) throw new CloudError('class_not_found');
-        const data = await run(sb.auth.signUp({
-          email: loginEmail(login), password: d.password,
-          options: { data: { role: 'student', full_name: d.full_name.trim(), login, class_code: code } }
-        }), 'student');
-        if (!data.session) throw new CloudError('email_confirm');
-        return loadProfile(data.user);
-      },
-      async signOut() { try { await sb.auth.signOut(); } catch {} user = null; cacheProfile(null); },
-      async updateProfile(p) {
-        await run(sb.from('profiles').update({ full_name: p.full_name, school: p.school ?? user.school }).eq('id', user.id));
-        user = { ...user, full_name: p.full_name, school: p.school ?? user.school };
-        cacheProfile(user);
-        return user;
-      },
-      async classPreview(code) {
-        const c = normCode(code);
-        if (!CODE_RE.test(c)) return null;
-        const rows = await run(sb.rpc('class_preview', { p_code: c }));
-        return rows?.[0] || null;
-      },
-      async loginAvailable(login) { return run(sb.rpc('login_available', { p_login: normLogin(login) })); },
-
-      async loadProgress() {
-        const row = await run(sb.from('progress').select('state, updated_at').eq('student_id', user.id).maybeSingle());
-        return row?.state && Object.keys(row.state).length ? row.state : null;
-      },
-      async saveProgress(state, summary) {
-        await run(sb.from('progress').upsert({ student_id: user.id, state, ...summary, updated_at: new Date().toISOString() }, { onConflict: 'student_id' }));
-      },
-
-      async myClasses() { return run(sb.rpc('my_classes')); },
-      async joinClass(code) { return run(sb.rpc('join_class', { p_code: normCode(code) })); },
-      async leaveClass(classId) { await run(sb.from('class_members').delete().eq('class_id', classId).eq('student_id', user.id)); },
-      async studentAssignments() {
-        return run(sb.from('assignments').select('id, class_id, title, note, lesson_ids, due_date, created_at, classes(name)').order('due_date', { ascending: true, nullsFirst: false }));
-      },
-
-      async teacherClasses() {
-        const rows = await run(sb.from('classes').select('id, name, code, created_at, class_members(count)').eq('teacher_id', user.id).order('created_at'));
-        return rows.map(r => ({ id: r.id, name: r.name, code: r.code, created_at: r.created_at, students: r.class_members?.[0]?.count || 0 }));
-      },
-      async createClass(name) { return run(sb.rpc('create_class', { p_name: name })); },
-      async renameClass(id, name) { await run(sb.from('classes').update({ name }).eq('id', id)); },
-      async deleteClass(id) { await run(sb.from('classes').delete().eq('id', id)); },
-      async roster(classId) { return run(sb.rpc('class_roster', { p_class: classId })); },
-      async studentState(studentId) {
-        const row = await run(sb.from('progress').select('state, updated_at').eq('student_id', studentId).maybeSingle());
-        return row?.state || null;
-      },
-      async removeStudent(classId, studentId) { await run(sb.from('class_members').delete().eq('class_id', classId).eq('student_id', studentId)); },
-      async resetPassword(studentId, password) { await run(sb.rpc('reset_student_password', { p_student: studentId, p_password: password })); },
-      async assignments(classId) { return run(sb.from('assignments').select('*').eq('class_id', classId).order('created_at', { ascending: false })); },
-      async createAssignment(a) { return run(sb.from('assignments').insert(a).select().single()); },
-      async deleteAssignment(id) { await run(sb.from('assignments').delete().eq('id', id)); }
-    };
-  }
-
-  /* ------------------------------------------------------------------ */
-  /* Демо (localStorage)                                                 */
+  /* Жергілікті сақтау (localStorage)                                     */
   /* ------------------------------------------------------------------ */
   function demoBackend() {
     const KEY = 'mathquest-demo-db', SESSION = 'mathquest-demo-session';
@@ -196,7 +61,7 @@ const Cloud = (() => {
     function startSession(u) { user = pub(u); try { localStorage.setItem(SESSION, u.id); } catch {} cacheProfile(user); return user; }
 
     return {
-      mode: 'demo',
+      mode: 'local',
       get user() { return user; },
       async init() {
         let id; try { id = localStorage.getItem(SESSION); } catch {}
@@ -318,7 +183,7 @@ const Cloud = (() => {
         if (a) ownClass(db, a.class_id);
         db.assignments = db.assignments.filter(a => a.id !== id); store(db);
       },
-      /* Демо сыныпты мысал оқушылармен толтыру (тек демо режимде). */
+      /* Сыныпты мысал оқушылармен толтыру (журналды көрсету үшін). */
       async seedStudents(classId, students) {
         need('teacher'); const db = load(); ownClass(db, classId);
         for (const s of students) {
@@ -333,12 +198,7 @@ const Cloud = (() => {
     };
   }
 
-  const configured = !!(cfg.SUPABASE_URL && cfg.SUPABASE_ANON_KEY);
-  let backend;
-  if (configured && window.supabase?.createClient) backend = supabaseBackend();
-  else backend = demoBackend();
-  backend.configured = configured;
-  backend.loadFailed = configured && !window.supabase?.createClient;
+  const backend = demoBackend();
   backend.CloudError = CloudError;
   backend.normCode = normCode;
   backend.normLogin = normLogin;

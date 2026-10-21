@@ -184,10 +184,10 @@ function progressSummary(s) {
   return { xp: s.xp, answered: s.answered, correct: s.correct, mastered_count: s.mastered.length, lessons_done, streak: streakOf(s), module_mastery, lesson_mastery, last_active };
 }
 
-/* ================= Бұлтпен синхрондау ================= */
+/* ================= Прогресті сақтау ================= */
 const Sync = (() => {
   let t = null, dirty = false, busy = false, status = 'idle', lastSaved = null;
-  const label = () => ({ idle: 'Синхрондалды', saving: 'Сақталуда…', saved: 'Сақталды', offline: 'Желі жоқ · кейін жіберіледі', error: 'Сақталмады · қайталанады' }[status]);
+  const label = () => ({ idle: 'Сақталды', saving: 'Сақталуда…', saved: 'Сақталды', offline: 'Желі жоқ · кейін жіберіледі', error: 'Сақталмады · қайталанады' }[status]);
   function paint() {
     const el = $('#sync'); if (!el) return;
     el.hidden = !me;
@@ -200,7 +200,6 @@ const Sync = (() => {
   async function flush() {
     clearTimeout(t);
     if (!me || !dirty || busy) return;
-    if (navigator.onLine === false) { set('offline'); return; }
     busy = true; dirty = false; set('saving');
     try { await Cloud.saveProgress(state, progressSummary(state)); lastSaved = Date.now(); set('saved'); }
     catch (e) { dirty = true; set(e.code === 'network' ? 'offline' : 'error'); clearTimeout(t); t = setTimeout(flush, 20000); }
@@ -246,13 +245,11 @@ function cloudErrorText(e, ctx) {
     bad_email: 'Email дұрыс жазылмаған.',
     name_required: 'Аты-жөніңізді жазыңыз.',
     network: 'Интернет байланысы жоқ. Байланысты тексеріп, қайталаңыз.',
-    email_confirm: 'Аккаунт құрылды, бірақ Supabase email растауды талап етеді. Хаттағы сілтемені ашыңыз немесе әкімші «Confirm email» баптауын өшірсін (SETUP.md).',
     email_not_confirmed: 'Email әлі расталмаған. Поштаңыздағы хатты ашыңыз.',
     rate_limit: 'Әрекет тым жиі қайталанды. Бір минуттан кейін көріңіз.',
     forbidden: 'Бұл әрекетке рұқсат жоқ.',
     only_students: 'Сыныпқа тек оқушы аккаунты қосыла алады.',
     signup_disabled: 'Бұл сайтта тіркелу өшірілген. Әкімшіге хабарласыңыз.',
-    profile_missing: 'Профиль табылмады. SQL схемасы толық орнатылғанын тексеріңіз (SETUP.md).',
     storage: 'Браузер деректерді сақтауға рұқсат бермеді.'
   };
   return map[e?.code] || 'Бірдеңе дұрыс болмады. Қайталап көріңіз.' + (e?.message && e.code === 'unknown' ? ` (${e.message.slice(0, 120)})` : '');
@@ -916,8 +913,7 @@ function showAuth(opts) { $('#shell').hidden = true; $('#boot')?.remove(); Auth.
 function paintDemoBanner() {
   const el = $('#demo-banner');
   let dismissed = false; try { dismissed = sessionStorage.getItem('mathquest-demo-ok') === '1'; } catch {}
-  if (Cloud.mode === 'demo' && me && !dismissed) { el.hidden = false; el.innerHTML = `<span><b>Демо режим:</b> деректер тек осы браузерде. Оқушылар өз құрылғысынан кіруі үшін Supabase қосыңыз (SETUP.md).</span><button class="icon-btn" data-action="hide-demo" aria-label="Жабу">${icon('close')}</button>`; }
-  else if (Cloud.loadFailed) { el.hidden = false; el.innerHTML = '<b>Supabase кітапханасы жүктелмеді.</b> js/vendor-supabase.js файлы бар екенін тексеріңіз.'; }
+  if (me && !dismissed) { el.hidden = false; el.innerHTML = `<span>Аккаунт пен прогресс осы браузерде сақталады.</span><button class="icon-btn" data-action="hide-demo" aria-label="Жабу">${icon('close')}</button>`; }
   else el.hidden = true;
 }
 
