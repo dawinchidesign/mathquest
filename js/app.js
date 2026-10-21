@@ -316,6 +316,9 @@ function render() {
 function afterRender() {
   if (route === 'quiz' && session) { tick(); timer = setInterval(tick, 500); }
   if (route.startsWith('lab/')) updateLab();
+  const ar = document.getElementById('anim-root');
+  if (ar && typeof Anim !== 'undefined') { const l = courseLesson(ar.dataset.lesson); if (l) Anim.mount(ar, l, moduleOf(l.moduleId)); }
+  else if (typeof Anim !== 'undefined') Anim.stop();
   document.dispatchEvent(new CustomEvent('mq:rendered', { detail: route }));
 }
 function reflow() { const y = window.scrollY; render(); window.scrollTo({ top: y, behavior: 'instant' }); }
@@ -431,19 +434,20 @@ VIEWS.learn = id => {
   if (!l) return emptyBlock('Тақырып табылмады', 'Курсқа оралып, тақырып таңда.', 'Курс', 'worlds');
   if (learningId !== id) { learningId = id; learningStep = 0; if (!state.lessons.includes(id)) { state.lessons.push(id); save(); } }
   const m = moduleOf(l.moduleId);
-  const steps = [['Түсін', 'Ереже'], ['Есепте', 'Бірінші есеп'], ['Қолдан', 'Өмірдегі есеп'], ['Тексер', 'Қате пікір']];
+  const steps = [['Көр', 'Анимация'], ['Түсін', 'Ереже'], ['Есепте', 'Бірінші есеп'], ['Қолдан', 'Өмірдегі есеп'], ['Тексер', 'Қате пікір']];
   const s = learningStep, tasks = lessonTasks(id);
   let body;
-  if (s === 0) body = `<p class="rule-text">${esc(l.rule)}</p>`;
-  else if (s === 3) body = `<p class="trap"><s>${esc(l.trap)}</s></p><p>Бұл пікір қате. ${esc(l.rule)}</p>`;
-  else { const p = l.problems[s - 1]; body = `<p class="problem">${esc(p.q)}</p>${stepList(p.steps)}<p class="answer-line">Жауабы: <b class="math">${esc(String(p.answer).replace('.', ','))}</b></p>`; }
+  if (s === 0) body = `<div id="anim-root" data-lesson="${esc(id)}"></div>`;
+  else if (s === 1) body = `<p class="rule-text">${esc(l.rule)}</p>`;
+  else if (s === 4) body = `<p class="trap"><s>${esc(l.trap)}</s></p><p>Бұл пікір қате. ${esc(l.rule)}</p>`;
+  else { const p = l.problems[s - 2]; body = `<p class="problem">${esc(p.q)}</p>${stepList(p.steps)}<p class="answer-line">Жауабы: <b class="math">${esc(String(p.answer).replace('.', ','))}</b></p>`; }
   return `<section><a href="#lesson/${m.id}" class="back">${icon('back')} ${esc(m.title)}</a>
     <header class="learn-head"><h1>${esc(l.title)}</h1><span class="chip">${lessonMastery(id)}% меңгерілді</span></header>
     <div class="learn-grid">
       <div class="learn-page" style="--mod:${m.color}">
         <ol class="stepper">${steps.map(([a, b], i) => `<li><button data-learning-step="${i}" class="${i === s ? 'is-on' : i < s ? 'is-past' : ''}" ${i === s ? 'aria-current="step"' : ''}><span>${i < s ? '✓' : i + 1}</span>${a}</button></li>`).join('')}</ol>
-        <div class="learn-sheet"><span class="nb-label">${steps[s][1]}</span>${body}</div>
-        <div class="learn-nav"><button class="btn btn-quiet" data-learning-move="-1" ${s === 0 ? 'disabled' : ''}>Артқа</button><span>${s + 1} / 4</span>${s < 3 ? '<button class="btn btn-primary" data-learning-move="1">Келесі</button>' : `<button class="btn btn-primary" data-course-start="${id}">Білімді бекіту</button>`}</div>
+        <div class="learn-sheet${s === 0 ? ' has-anim' : ''}">${s === 0 ? '' : `<span class="nb-label">${steps[s][1]}</span>`}${body}</div>
+        <div class="learn-nav"><button class="btn btn-quiet" data-learning-move="-1" ${s === 0 ? 'disabled' : ''}>Артқа</button><span>${s + 1} / ${steps.length}</span>${s < steps.length - 1 ? '<button class="btn btn-primary" data-learning-move="1">Келесі</button>' : `<button class="btn btn-primary" data-course-start="${id}">Білімді бекіту</button>`}</div>
       </div>
       <aside class="learn-side">
         <div class="side-card"><h3>Бекіту тапсырмалары</h3><ol class="mini-tasks">${tasks.map(q => `<li class="${state.mastered.includes(q.id) ? 'is-done' : ''}"><span>${state.mastered.includes(q.id) ? '✓' : ''}</span>${FORMAT_LABELS[q.type || 'choice']}</li>`).join('')}</ol><button class="btn btn-primary btn-block" data-course-start="${id}">${tasks.length} тапсырманы орындау</button></div>
@@ -814,7 +818,7 @@ document.addEventListener('click', e => {
   if (ds.setTheme) { setTheme(ds.setTheme); return; }
   if (ds.courseStart) { const l = courseLesson(ds.courseStart); if (l) startQuiz({ topic: l.moduleId, ids: lessonTasks(l.id).map(q => q.id), count: 3, minutes: 6 }); return; }
   if (ds.learningStep !== undefined) { learningStep = +ds.learningStep; reflow(); return; }
-  if (ds.learningMove) { learningStep = Math.max(0, Math.min(3, learningStep + +ds.learningMove)); reflow(); return; }
+  if (ds.learningMove) { learningStep = Math.max(0, Math.min(4, learningStep + +ds.learningMove)); reflow(); return; }
   if (ds.gameFormat) { gameFilter = ds.gameFormat; render(); return; }
   if (ds.moduleMissions) { gameModule = ds.moduleMissions; gameFilter = 'all'; routeTo('games'); return; }
   if (ds.mission) { const q = question(ds.mission); startQuiz({ topic: q.topic, ids: [q.id], count: 1, minutes: 5 }); return; }

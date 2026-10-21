@@ -308,8 +308,8 @@ textarea.input{resize:vertical;min-height:64px}
 .learn-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:22px}
 .learn-grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:22px;align-items:start}
 .learn-page{--mod:var(--ink);border-radius:var(--r-lg);background:var(--sheet);border:1px solid var(--line);overflow:hidden}
-.stepper{display:grid;grid-template-columns:repeat(4,1fr);list-style:none;padding:0;border-bottom:1px solid var(--line)}
-.stepper button{display:flex;align-items:center;gap:9px;width:100%;padding:15px 16px;font-size:14px;color:var(--muted);font-weight:500;border-bottom:2px solid transparent;margin-bottom:-1px}
+.stepper{display:grid;grid-template-columns:repeat(5,1fr);list-style:none;padding:0;border-bottom:1px solid var(--line)}
+.stepper button{display:flex;align-items:center;gap:8px;width:100%;padding:15px 10px;font-size:14px;color:var(--muted);font-weight:500;border-bottom:2px solid transparent;margin-bottom:-1px}
 .stepper button span{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;border:1px solid var(--line-2);font-size:12px}
 .stepper button.is-on{color:var(--ink);border-bottom-color:var(--ink)}
 .stepper button.is-on span{background:var(--ink);color:var(--on-ink);border-color:var(--ink)}
@@ -830,3 +830,47 @@ body.board .option{font-size:22px;padding:20px}
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
 }
+
+/* ---------- Анимациялық түсіндірме («Көр») ---------- */
+.anim{--mod:var(--ink);display:flex;flex-direction:column;gap:0;border:1px solid var(--line);border-radius:var(--r);background:var(--sheet);overflow:hidden;outline:none}
+.anim:focus-visible{box-shadow:0 0 0 3px var(--ink-soft)}
+.anim-stage{position:relative;background:var(--sheet);background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:24px 24px;aspect-ratio:16/9}
+.anim-stage svg{display:block;width:100%;height:100%}
+.anim-cap{min-height:74px;padding:12px 18px;border-top:1px solid var(--line);background:var(--sheet-2);display:flex;align-items:center}
+.anim-cap p{margin:0;font-size:17px;line-height:1.45;color:var(--text);font-weight:450}
+.anim-cap p.in{animation:capIn .35s ease-out}
+@keyframes capIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.anim-cap .c-gold{color:var(--gold)}.anim-cap .c-mod{color:var(--ink)}.anim-cap .c-ok{color:var(--ok)}.anim-cap .c-red{color:var(--red)}
+.anim-bar{display:flex;align-items:center;gap:6px;padding:8px 10px;border-top:1px solid var(--line)}
+.anim-btn{width:40px;height:40px;border-radius:10px;border:0;background:transparent;color:var(--text-2);display:grid;place-items:center;cursor:pointer;flex:none;font:600 14px var(--sans)}
+.anim-btn:hover{background:var(--ink-soft);color:var(--ink)}
+.anim-btn svg{width:22px;height:22px}
+.anim-main{background:var(--ink);color:var(--on-ink)}.anim-main:hover{background:var(--ink-hover);color:var(--on-ink)}
+.anim-speed{width:auto;padding:0 10px;min-width:44px}
+.anim-dots{flex:1;display:flex;gap:5px;align-items:center;justify-content:center;flex-wrap:wrap;padding:0 6px}
+.anim-dots button{width:22px;height:8px;border-radius:4px;border:0;padding:0;background:var(--line-2);cursor:pointer}
+.anim-dots button.is-past{background:color-mix(in srgb,var(--ink) 45%,transparent)}
+.anim-dots button.is-on{background:var(--gold-fill);width:30px}
+.anim-cover{position:absolute;inset:0;border:0;background:color-mix(in srgb,var(--sheet) 55%,transparent);display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:center;cursor:pointer;color:var(--ink);font:600 16px var(--sans)}
+.anim-cover span{width:72px;height:72px;border-radius:50%;background:var(--ink);color:var(--on-ink);display:grid;place-items:center;box-shadow:var(--shadow)}
+.anim-cover svg{width:36px;height:36px}
+.anim-loading .anim-stage{display:grid;place-items:center}
+.anim-spin{width:34px;height:34px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--ink);animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.anim-empty{padding:28px;text-align:center;color:var(--muted)}
+.learn-sheet.has-anim{padding:0;background:none;border:0}
+.learn-sheet.has-anim::before{display:none}
+/* SVG түстері */
+.anim .an-sans{font-family:var(--sans)}.anim .an-math{font-family:var(--serif)}
+.anim text{paint-order:stroke}
+.anim .f-none{fill:none}.anim .f-ink{fill:var(--ink)}.anim .f-gold{fill:var(--gold-fill)}.anim .f-goldt{fill:var(--gold)}.anim .f-red{fill:var(--red)}.anim .f-ok{fill:var(--ok)}
+.anim .f-mod{fill:var(--mod)}.anim .f-modt{fill:var(--ink)}.anim .f-text{fill:var(--text)}.anim .f-muted{fill:var(--muted)}.anim .f-line{fill:var(--line-2)}
+.anim .f-soft{fill:var(--sheet-2)}.anim .f-cell{fill:color-mix(in srgb,var(--line) 70%,var(--sheet))}.anim .f-sheet{fill:var(--sheet)}.anim .f-white{fill:#fff}
+.anim .f-c3{fill:var(--c3)}.anim .f-c4{fill:var(--c4)}.anim .f-deep{fill:#131d55}
+.anim .f-modsoft{fill:color-mix(in srgb,var(--mod) 30%,var(--sheet))}.anim .f-inksoft{fill:var(--ink-soft)}.anim .f-goldsoft{fill:var(--gold-soft)}.anim .f-rsoft,.anim .f-redsoft{fill:var(--red-soft)}.anim .f-oksoft{fill:var(--ok-soft)}
+.anim .f-c3soft{fill:color-mix(in srgb,var(--c3) 22%,var(--sheet))}.anim .f-c4soft{fill:color-mix(in srgb,var(--c4) 22%,var(--sheet))}.anim .f-modsoftsoft{fill:var(--sheet-2)}
+.anim .s-ink{stroke:var(--ink)}.anim .s-gold{stroke:var(--gold-fill)}.anim .s-goldt{stroke:var(--gold)}.anim .s-red{stroke:var(--red)}.anim .s-ok{stroke:var(--ok)}.anim .s-mod{stroke:var(--mod)}
+.anim .s-text{stroke:var(--text)}.anim .s-muted{stroke:var(--muted)}.anim .s-line{stroke:var(--line-2)}.anim .s-sheet{stroke:var(--sheet)}.anim .s-c3{stroke:var(--c3)}.anim .s-c4{stroke:var(--c4)}.anim .s-deep{stroke:#131d55}
+.anim .t-gold{fill:var(--gold);font-weight:700}.anim .t-mod{fill:var(--ink);font-weight:700}.anim .t-ok{fill:var(--ok);font-weight:700}.anim .t-red{fill:var(--red);font-weight:700}.anim .t-strike{fill:var(--red);text-decoration:line-through}
+@media (max-width:640px){.anim-cap{min-height:88px;padding:10px 12px}.anim-cap p{font-size:15px}.anim-btn{width:36px;height:36px}.anim-dots button{width:14px}.anim-dots button.is-on{width:20px}}
+body.board .anim-cap p{font-size:24px}
