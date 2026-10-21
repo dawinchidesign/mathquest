@@ -63,7 +63,7 @@ const Cloud = (() => {
       mode: 'server',
       get user() { return user; },
       async available() {
-        try { const d = await rpc('ping'); return d?.storage ? 'ok' : 'nostorage'; }
+        try { const d = await rpc('ping'); return d?.storage ? 'ok' : d?.configured ? 'unreachable' : 'nostorage'; }
         catch (e) { return e.code === 'network' && getToken() ? 'offline' : 'none'; }
       },
       async init() {
@@ -285,10 +285,14 @@ const Cloud = (() => {
     get mode() { return backend.mode; },
     get user() { return backend.user; },
     serverIssue: null,
+    get issueText() {
+      return api.serverIssue === 'nostorage' ? '<b>Дерекқор қосылмаған.</b> Vercel → Storage → Upstash for Redis → Connect, содан кейін Redeploy.'
+        : api.serverIssue === 'unreachable' ? '<b>Дерекқорға қосылу мүмкін болмады.</b> Vercel → Logs бөлімін тексеріңіз.' : '';
+    },
     async init() {
       const st = location.protocol === 'file:' ? 'none' : await server.available();
       if (st === 'ok' || st === 'offline') backend = server;
-      else { backend = local; api.serverIssue = st === 'nostorage' ? 'nostorage' : null; }
+      else { backend = local; api.serverIssue = st === 'nostorage' || st === 'unreachable' ? st : null; }
       return backend.init();
     },
     CloudError, normCode, normLogin, LOGIN_RE

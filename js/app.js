@@ -922,7 +922,7 @@ function showAuth(opts) { $('#shell').hidden = true; $('#boot')?.remove(); Auth.
 function paintDemoBanner() {
   const el = $('#demo-banner');
   let dismissed = false; try { dismissed = sessionStorage.getItem('mathquest-demo-ok') === '1'; } catch {}
-  const text = Cloud.serverIssue === 'nostorage' ? '<b>Дерекқор қосылмаған:</b> Vercel жобасында Storage → Upstash for Redis қосыңыз. Әзірге деректер осы браузерде сақталады.'
+  const text = Cloud.serverIssue ? Cloud.issueText + ' Әзірге деректер осы браузерде сақталады.'
     : Cloud.mode === 'local' ? 'Аккаунт пен прогресс осы браузерде сақталады.' : '';
   if (text && me && !dismissed) { el.hidden = false; el.innerHTML = `<span>${text}</span><button class="icon-btn" data-action="hide-demo" aria-label="Жабу">${icon('close')}</button>`; }
   else el.hidden = true;

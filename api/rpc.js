@@ -2,14 +2,14 @@
 /*
  * MathQuest · сервер (Vercel Function).
  * Бір нүкте: POST /api/rpc  { op, args }  + Authorization: Bearer <token>
- * Деректер: Upstash Redis (Vercel Marketplace → Upstash for Redis).
- * Айнымалылар: KV_REST_API_URL + KV_REST_API_TOKEN
- *          (немесе UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN).
+ * Деректер: Redis. Vercel → Storage арқылы қосылған кез келген Redis жарайды:
+ *   • Upstash for Redis — REST айнымалылары (…_REST_API_URL + …_REST_API_TOKEN, префикс кез келген);
+ *   • Redis (Redis Cloud т.б.) — REDIS_URL (redis:// немесе rediss://, префикс кез келген).
  */
 const crypto = require('crypto');
+const net = require('net');
+const tls = require('tls');
 
-const REDIS_URL = (process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || '').replace(/\/+$/, '');
-const REDIS_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || '';
 const P = 'mq:';
 const SESSION_TTL = 60 * 24 * 3600;
 const LOGIN_RE = /^[a-z0-9._-]{3,24}$/;
@@ -19,28 +19,139 @@ const MAX_STATE = 900 * 1024;
 
 class ApiError extends Error { constructor(code, status = 400) { super(code); this.code = code; this.status = status; } }
 
-/* ---------------- Redis (Upstash REST) ---------------- */
-async function call(path, body) {
-  if (!REDIS_URL || !REDIS_TOKEN) throw new ApiError('storage_missing', 503);
-  const res = await fetch(REDIS_URL + path, {
+/* ---------------- Дерекқорды табу ---------------- */
+function findStorage(env = process.env) {
+  const keys = Object.keys(env).sort((a, b) => a.length - b.length);
+  // 1) Upstash REST: <PREFIX>_REST_API_URL + <PREFIX>_REST_API_TOKEN немесе <PREFIX>_REDIS_REST_URL + _TOKEN
+  for (const k of keys) {
+    if (!/(_REST_API_URL|_REDIS_REST_URL)$/.test(k) || !/^https?:\/\//.test(env[k] || '')) continue;
+    const t = env[k.replace(/URL$/, 'TOKEN')];
+    if (t) return { kind: 'rest', url: env[k].replace(/\/+$/, ''), token: t };
+  }
+  // 2) TCP: REDIS_URL / KV_URL / <PREFIX>_REDIS_URL / <PREFIX>_URL (redis://…)
+  const tcp = keys.filter(k => /^rediss?:\/\//.test(env[k] || '') && /(^|_)(REDIS_URL|KV_URL|URL)$/.test(k));
+  const best = tcp.find(k => /REDIS_URL$/.test(k)) || tcp[0];
+  if (best) return { kind: 'tcp', url: env[best] };
+  return null;
+}
+const STORAGE = findStorage();
+
+/* ---------------- Redis: REST (Upstash) ---------------- */
+async function restCall(path, body) {
+  const res = await fetch(STORAGE.url + path, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${REDIS_TOKEN}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${STORAGE.token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   });
   const data = await res.json().catch(() => null);
-  if (!res.ok || !data) throw new ApiError('server', 502);
+  if (!res.ok || !data) { console.error('redis rest', res.status, data); throw new ApiError('server', 502); }
   return data;
 }
+
+/* ---------------- Redis: TCP (RESP2) ---------------- */
+class RespClient {
+  constructor(url) {
+    this.u = new URL(url); this.sock = null; this.buf = Buffer.alloc(0); this.queue = []; this.ready = null;
+  }
+  connect() {
+    if (this.ready) return this.ready;
+    this.ready = new Promise((ok, fail) => {
+      const u = this.u, port = +u.port || 6379, host = u.hostname;
+      const opts = { host, port, servername: host };
+      const s = u.protocol === 'rediss:' ? tls.connect(opts) : net.connect(opts);
+      const onErr = e => { this.reset(e); fail(e); };
+      s.setNoDelay(true);
+      s.once(u.protocol === 'rediss:' ? 'secureConnect' : 'connect', async () => {
+        s.off('error', onErr);
+        s.on('error', e => this.reset(e));
+        try {
+          const pass = decodeURIComponent(u.password || ''), user = decodeURIComponent(u.username || '');
+          if (pass) await this.send(user && user !== 'default' ? ['AUTH', user, pass] : ['AUTH', pass]);
+          const db = +(u.pathname || '').slice(1);
+          if (db) await this.send(['SELECT', db]);
+          ok();
+        } catch (e) { this.reset(e); fail(e); }
+      });
+      s.once('error', onErr);
+      s.on('data', d => this.onData(d));
+      s.on('close', () => this.reset(new Error('closed')));
+      s.setTimeout(10000, () => s.destroy(new Error('timeout')));
+      this.sock = s;
+    });
+    return this.ready;
+  }
+  reset(err) {
+    const q = this.queue; this.queue = []; this.ready = null; this.buf = Buffer.alloc(0);
+    if (this.sock) { this.sock.removeAllListeners('close'); this.sock.destroy(); this.sock = null; }
+    for (const w of q) w.fail(err);
+  }
+  encode(cmd) {
+    const parts = [`*${cmd.length}\r\n`];
+    for (const a of cmd) { const b = Buffer.from(String(a)); parts.push(`$${b.length}\r\n`, b, '\r\n'); }
+    return Buffer.concat(parts.map(x => Buffer.isBuffer(x) ? x : Buffer.from(x)));
+  }
+  send(cmd) {
+    return new Promise((ok, fail) => { this.queue.push({ ok, fail }); this.sock.write(this.encode(cmd)); });
+  }
+  parse(i) { // → [value, nextIndex] немесе null (деректер жеткіліксіз)
+    const b = this.buf; if (i >= b.length) return null;
+    const end = b.indexOf('\r\n', i); if (end < 0) return null;
+    const t = String.fromCharCode(b[i]), line = b.toString('utf8', i + 1, end), next = end + 2;
+    if (t === '+') return [line, next];
+    if (t === '-') return [{ __err: line }, next];
+    if (t === ':') return [Number(line), next];
+    if (t === '$') { const n = +line; if (n < 0) return [null, next]; if (b.length < next + n + 2) return null; return [b.toString('utf8', next, next + n), next + n + 2]; }
+    if (t === '*') {
+      const n = +line; if (n < 0) return [null, next];
+      const arr = []; let j = next;
+      for (let k = 0; k < n; k++) { const r = this.parse(j); if (!r) return null; arr.push(r[0]); j = r[1]; }
+      return [arr, j];
+    }
+    throw new Error('bad resp');
+  }
+  onData(d) {
+    this.buf = this.buf.length ? Buffer.concat([this.buf, d]) : d;
+    let r;
+    while (this.queue.length && (r = this.parse(0))) {
+      this.buf = this.buf.subarray(r[1]);
+      const w = this.queue.shift();
+      if (r[0] && r[0].__err) w.fail(Object.assign(new Error(r[0].__err), { redis: true })); else w.ok(r[0]);
+    }
+  }
+  async run(cmds) { // pipelined
+    await this.connect();
+    return Promise.all(cmds.map(c => this.send(c)));
+  }
+}
+let tcpClient = null;
+async function tcpRun(cmds) {
+  if (!tcpClient) tcpClient = new RespClient(STORAGE.url);
+  try { return await tcpClient.run(cmds); }
+  catch (e) { console.error('redis tcp', e.message); tcpClient.reset(e); throw new ApiError('server', 502); }
+}
+
+/* ---------------- Ортақ интерфейс ---------------- */
+const norm = cmd => cmd.map(String);
 async function r(...cmd) {
-  const d = await call('', cmd.map(String));
-  if (d.error) throw new ApiError('server', 502);
+  if (!STORAGE) throw new ApiError('storage_missing', 503);
+  if (STORAGE.kind === 'tcp') return (await tcpRun([norm(cmd)]))[0];
+  const d = await restCall('', norm(cmd));
+  if (d.error) { console.error('redis', d.error); throw new ApiError('server', 502); }
   return d.result;
 }
 async function pipe(cmds, atomic = false) {
   if (!cmds.length) return [];
-  const d = await call(atomic ? '/multi-exec' : '/pipeline', cmds.map(c => c.map(String)));
+  if (!STORAGE) throw new ApiError('storage_missing', 503);
+  if (STORAGE.kind === 'tcp') {
+    if (!atomic) return tcpRun(cmds.map(norm));
+    const res = await tcpRun([['MULTI'], ...cmds.map(norm), ['EXEC']]);
+    const out = res[res.length - 1];
+    if (!Array.isArray(out)) throw new ApiError('server', 502);
+    return out;
+  }
+  const d = await restCall(atomic ? '/multi-exec' : '/pipeline', cmds.map(norm));
   if (!Array.isArray(d)) throw new ApiError('server', 502);
-  return d.map(x => { if (x.error) throw new ApiError('server', 502); return x.result; });
+  return d.map(x => { if (x.error) { console.error('redis', x.error); throw new ApiError('server', 502); } return x.result; });
 }
 const tx = cmds => pipe(cmds, true);
 const J = s => { try { return s ? JSON.parse(s) : null; } catch { return null; } };
@@ -110,7 +221,11 @@ function genCode() {
 
 /* ---------------- Операциялар ---------------- */
 const PUBLIC = {
-  async ping() { return { ok: true, storage: !!(REDIS_URL && REDIS_TOKEN) }; },
+  async ping() {
+    if (!STORAGE) return { ok: true, storage: false, configured: false };
+    try { await r('PING'); return { ok: true, storage: true, kind: STORAGE.kind }; }
+    catch { return { ok: true, storage: false, configured: true, kind: STORAGE.kind }; }
+  },
 
   async signIn({ identifier, password }) {
     const id = normEmail(identifier);
@@ -328,3 +443,4 @@ module.exports = async function handler(req, res) {
     return send(res, 500, { error: 'server' });
   }
 };
+module.exports.findStorage = findStorage;
