@@ -65,8 +65,8 @@ const Teacher = (() => {
       <h2>Сыныпта әзірге оқушы жоқ</h2>
       <p>Оқушыларға осы нұсқауды беріңіз:</p>
       <ol class="steps steps-big"><li>Сайтты ашу: <b>${esc(siteURL())}</b></li><li>«Тіркелу» → «Оқушымын» таңдау</li><li>Сынып кодын енгізу: <b class="math">${esc(c.code)}</b></li></ol>
-      <div class="btn-row"><button class="btn btn-primary" data-board-code="${c.id}">${icon('board')} Кодты тақтада көрсету</button><button class="btn btn-quiet" data-seed-demo="${c.id}">Мысал оқушыларды қосу</button></div>
-      <p class="muted small">Журналдың қалай көрінетінін көру үшін 14 мысал оқушы қосылады (құпиясөзі demo123).</p></div>`;
+      <div class="btn-row"><button class="btn btn-primary" data-board-code="${c.id}">${icon('board')} Кодты тақтада көрсету</button>${Cloud.mode === 'local' ? `<button class="btn btn-quiet" data-seed-demo="${c.id}">Мысал оқушыларды қосу</button>` : ''}</div>
+      ${Cloud.mode === 'local' ? '<p class="muted small">Журналдың қалай көрінетінін көру үшін 14 мысал оқушы қосылады (құпиясөзі demo123).</p>' : ''}</div>`;
     const n = roster.length, active = roster.filter(s => daysSince(s.last_active) <= 7).length;
     const withAcc = roster.filter(s => s.answered > 0), avgAcc = withAcc.length ? Math.round(withAcc.reduce((t, s) => t + acc(s), 0) / withAcc.length) : null;
     const avgLessons = Math.round(roster.reduce((t, s) => t + s.lessons_done, 0) / n * 10) / 10, help = roster.filter(needsHelp).length;

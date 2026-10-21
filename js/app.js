@@ -200,9 +200,14 @@ const Sync = (() => {
   async function flush() {
     clearTimeout(t);
     if (!me || !dirty || busy) return;
+    if (Cloud.mode === 'server' && navigator.onLine === false) { set('offline'); return; }
     busy = true; dirty = false; set('saving');
     try { await Cloud.saveProgress(state, progressSummary(state)); lastSaved = Date.now(); set('saved'); }
-    catch (e) { dirty = true; set(e.code === 'network' ? 'offline' : 'error'); clearTimeout(t); t = setTimeout(flush, 20000); }
+    catch (e) {
+      dirty = true; set(e.code === 'network' ? 'offline' : 'error');
+      if (e.code === 'unauthorized') { toast(cloudErrorText(e)); me = null; showAuth({ tab: 'login' }); return; }
+      clearTimeout(t); t = setTimeout(flush, 20000);
+    }
     finally { busy = false; }
   }
   window.addEventListener('online', () => { if (dirty) flush(); });
@@ -250,7 +255,11 @@ function cloudErrorText(e, ctx) {
     forbidden: 'Бұл әрекетке рұқсат жоқ.',
     only_students: 'Сыныпқа тек оқушы аккаунты қосыла алады.',
     signup_disabled: 'Бұл сайтта тіркелу өшірілген. Әкімшіге хабарласыңыз.',
-    storage: 'Браузер деректерді сақтауға рұқсат бермеді.'
+    storage: 'Браузер деректерді сақтауға рұқсат бермеді.',
+    unauthorized: 'Сессия аяқталды. Қайта кіріңіз.',
+    server: 'Сервер уақытша жауап бермейді. Біраздан кейін қайталаңыз.',
+    storage_missing: 'Сервердің дерекқоры қосылмаған (Vercel → Storage → Upstash Redis).',
+    too_large: 'Прогресс тым үлкен, сақталмады.'
   };
   return map[e?.code] || 'Бірдеңе дұрыс болмады. Қайталап көріңіз.' + (e?.message && e.code === 'unknown' ? ` (${e.message.slice(0, 120)})` : '');
 }
@@ -913,7 +922,9 @@ function showAuth(opts) { $('#shell').hidden = true; $('#boot')?.remove(); Auth.
 function paintDemoBanner() {
   const el = $('#demo-banner');
   let dismissed = false; try { dismissed = sessionStorage.getItem('mathquest-demo-ok') === '1'; } catch {}
-  if (me && !dismissed) { el.hidden = false; el.innerHTML = `<span>Аккаунт пен прогресс осы браузерде сақталады.</span><button class="icon-btn" data-action="hide-demo" aria-label="Жабу">${icon('close')}</button>`; }
+  const text = Cloud.serverIssue === 'nostorage' ? '<b>Дерекқор қосылмаған:</b> Vercel жобасында Storage → Upstash for Redis қосыңыз. Әзірге деректер осы браузерде сақталады.'
+    : Cloud.mode === 'local' ? 'Аккаунт пен прогресс осы браузерде сақталады.' : '';
+  if (text && me && !dismissed) { el.hidden = false; el.innerHTML = `<span>${text}</span><button class="icon-btn" data-action="hide-demo" aria-label="Жабу">${icon('close')}</button>`; }
   else el.hidden = true;
 }
 

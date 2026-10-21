@@ -1,7 +1,9 @@
 'use strict';
 /*
  * MathQuest Cloud — аккаунттар, сыныптар және прогресс.
- * Барлық деректер осы браузердің localStorage-інде сақталады (сервер жоқ).
+ * Бір API, екі іске асыру:
+ *   • Сервер — Vercel функциясы /api/rpc (ортақ дерекқор, кез келген құрылғыдан);
+ *   • Жергілікті — сервер жоқ болса (мысалы, index.html файлдан ашылса), localStorage.
  */
 const Cloud = (() => {
   const cfg = window.MATHQUEST_CONFIG || {};
@@ -18,6 +20,7 @@ const Cloud = (() => {
   }
 
   function cacheProfile(p) { try { p ? localStorage.setItem(PROFILE_CACHE, JSON.stringify(p)) : localStorage.removeItem(PROFILE_CACHE); } catch {} }
+  function cachedProfile() { try { return JSON.parse(localStorage.getItem(PROFILE_CACHE)); } catch { return null; } }
 
   function validateSignup(kind, d) {
     if (!String(d.full_name || '').trim()) throw new CloudError('name_required');
@@ -25,6 +28,79 @@ const Cloud = (() => {
     if (kind === 'student' && !LOGIN_RE.test(normLogin(d.login))) throw new CloudError('bad_login');
     if (kind === 'teacher' && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(d.email || '').trim())) throw new CloudError('bad_email');
     if (d.class_code && !CODE_RE.test(normCode(d.class_code))) throw new CloudError('class_not_found');
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Сервер (Vercel функциясы /api/rpc)                                  */
+  /* ------------------------------------------------------------------ */
+  function serverBackend() {
+    const TOKEN = 'mathquest-token', API = 'api/rpc';
+    let user = null;
+    const getToken = () => { try { return localStorage.getItem(TOKEN); } catch { return null; } };
+    const setToken = t => { try { t ? localStorage.setItem(TOKEN, t) : localStorage.removeItem(TOKEN); } catch {} };
+
+    async function rpc(op, args = {}) {
+      let res;
+      try {
+        const token = getToken();
+        res = await fetch(API, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) },
+          body: JSON.stringify({ op, args })
+        });
+      } catch (e) { throw new CloudError('network', e?.message); }
+      let body = null; try { body = await res.json(); } catch {}
+      if (!res.ok || !body || body.error) {
+        const code = body?.error || (res.status >= 500 ? 'server' : 'unknown');
+        if (code === 'unauthorized') { setToken(null); user = null; cacheProfile(null); }
+        throw new CloudError(code, `${op}: ${res.status}`);
+      }
+      return body.data;
+    }
+    function startSession(d) { setToken(d.token); user = d.user; cacheProfile(user); return user; }
+
+    return {
+      mode: 'server',
+      get user() { return user; },
+      async available() {
+        try { const d = await rpc('ping'); return d?.storage ? 'ok' : 'nostorage'; }
+        catch (e) { return e.code === 'network' && getToken() ? 'offline' : 'none'; }
+      },
+      async init() {
+        if (!getToken()) { cacheProfile(null); return null; }
+        try { user = await rpc('me'); cacheProfile(user); return user; }
+        catch (e) {
+          const c = cachedProfile();
+          if (e.code === 'network' && c) return (user = c);
+          if (e.code === 'unauthorized') return null;
+          throw e;
+        }
+      },
+      async signIn(identifier, password) { return startSession(await rpc('signIn', { identifier, password })); },
+      async signUpTeacher(d) { validateSignup('teacher', d); return startSession(await rpc('signUpTeacher', d)); },
+      async signUpStudent(d) { validateSignup('student', d); return startSession(await rpc('signUpStudent', d)); },
+      async signOut() { try { await rpc('signOut'); } catch {} setToken(null); user = null; cacheProfile(null); },
+      async updateProfile(p) { user = await rpc('updateProfile', p); cacheProfile(user); return user; },
+      classPreview: code => CODE_RE.test(normCode(code)) ? rpc('classPreview', { code: normCode(code) }) : Promise.resolve(null),
+      loginAvailable: login => rpc('loginAvailable', { login }),
+      loadProgress: () => rpc('loadProgress'),
+      saveProgress: (state, summary) => rpc('saveProgress', { state, summary }),
+      myClasses: () => rpc('myClasses'),
+      joinClass: code => rpc('joinClass', { code }),
+      leaveClass: classId => rpc('leaveClass', { classId }),
+      studentAssignments: () => rpc('studentAssignments'),
+      teacherClasses: () => rpc('teacherClasses'),
+      createClass: name => rpc('createClass', { name }),
+      renameClass: (id, name) => rpc('renameClass', { id, name }),
+      deleteClass: id => rpc('deleteClass', { id }),
+      roster: classId => rpc('roster', { classId }),
+      studentState: studentId => rpc('studentState', { studentId }),
+      removeStudent: (classId, studentId) => rpc('removeStudent', { classId, studentId }),
+      resetPassword: (studentId, password) => rpc('resetPassword', { studentId, password }),
+      assignments: classId => rpc('assignments', { classId }),
+      createAssignment: a => rpc('createAssignment', a),
+      deleteAssignment: id => rpc('deleteAssignment', { id })
+    };
   }
 
   /* ------------------------------------------------------------------ */
@@ -198,10 +274,28 @@ const Cloud = (() => {
     };
   }
 
-  const backend = demoBackend();
-  backend.CloudError = CloudError;
-  backend.normCode = normCode;
-  backend.normLogin = normLogin;
-  backend.LOGIN_RE = LOGIN_RE;
-  return backend;
+  /* Қай іске асыру қолданылатынын init() шешеді: сервер жауап берсе — сервер. */
+  const local = demoBackend(), server = serverBackend();
+  let backend = local;
+  const METHODS = ['signIn', 'signUpTeacher', 'signUpStudent', 'signOut', 'updateProfile', 'classPreview', 'loginAvailable',
+    'loadProgress', 'saveProgress', 'myClasses', 'joinClass', 'leaveClass', 'studentAssignments', 'teacherClasses', 'createClass',
+    'renameClass', 'deleteClass', 'roster', 'studentState', 'removeStudent', 'resetPassword', 'assignments', 'createAssignment',
+    'deleteAssignment', 'seedStudents'];
+  const api = {
+    get mode() { return backend.mode; },
+    get user() { return backend.user; },
+    serverIssue: null,
+    async init() {
+      const st = location.protocol === 'file:' ? 'none' : await server.available();
+      if (st === 'ok' || st === 'offline') backend = server;
+      else { backend = local; api.serverIssue = st === 'nostorage' ? 'nostorage' : null; }
+      return backend.init();
+    },
+    CloudError, normCode, normLogin, LOGIN_RE
+  };
+  for (const m of METHODS) api[m] = (...a) => {
+    if (typeof backend[m] !== 'function') return Promise.reject(new CloudError('forbidden'));
+    return backend[m](...a);
+  };
+  return api;
 })();
