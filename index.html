@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="kk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="author" content="Рахметқұлова Жаңыл Рахметқұлқызы">
+<meta name="description" content="MathQuest — математикалық сауаттылықтың толық курсы: 15 бөлім, 153 тақырып, 586 тапсырма. Мұғалім сыныпты құрып, оқушылардың прогресін бақылайды.">
+<meta name="theme-color" content="#1b2f7a">
+<title>MathQuest · Математикалық сауаттылық</title>
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="preload" href="assets/fonts/geologica-cyrillic-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="css/app.css?v=4">
+<script>try{document.documentElement.dataset.theme=localStorage.getItem('mathquest-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')}catch(e){}</script>
+</head>
+<body>
+<a class="skip" href="#main">Мазмұнға өту</a>
+<div id="boot" class="boot" role="status"><span class="logo">m<i></i></span></div>
+<div id="auth" hidden></div>
+
+<div class="shell" id="shell" hidden>
+  <aside class="side" id="side" aria-label="Мәзір">
+    <a class="side-brand" href="#home"><span class="logo">m<i></i></span><span class="brand-word">MathQuest<small>Математикалық сауаттылық</small></span></a>
+    <nav id="nav" class="side-nav" aria-label="Негізгі мәзір"></nav>
+    <div class="side-foot" id="side-foot"></div>
+  </aside>
+  <div class="scrim" data-action="toggle-nav" aria-hidden="true"></div>
+  <div class="main-col">
+    <header class="top">
+      <button class="icon-btn menu-btn" data-action="toggle-nav" aria-label="Мәзір"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      <span class="crumb" id="crumb"></span>
+      <span class="grow"></span>
+      <span class="sync" id="sync" hidden aria-live="polite"></span>
+      <span class="top-stats" id="top-stats"></span>
+      <button class="icon-btn" id="theme-btn" data-action="toggle-theme" aria-label="Тақырыпты ауыстыру"></button>
+    </header>
+    <div class="demo-banner" id="demo-banner" hidden></div>
+    <main id="main" class="page" tabindex="-1"></main>
+    <footer class="foot"><span>MathQuest — түсін, жаттық, жетістікке жет.</span><span class="foot-credit">Жоба авторы: <b>Рахметқұлова Жаңыл Рахметқұлқызы</b> · №6 орта мектебі</span><span class="muted">Авторлық оқу тапсырмалары · Ресми ҰБТ сұрақтары емес</span></footer>
+  </div>
+</div>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<dialog id="modal" class="modal"><div id="modal-content"></div></dialog>
+<div id="worksheet" class="worksheet" aria-hidden="true"></div>
+
+<script src="js/config.js?v=4"></script>
+<script src="js/vendor-supabase.js?v=2.118"></script>
+<script src="js/cloud.js?v=4"></script>
+<script src="data/bank.js?v=4"></script>
+<script src="data/content.js?v=4"></script>
+<script src="data/curriculum.js?v=4"></script>
+<script src="data/missions.js?v=4"></script>
+<script src="js/app.js?v=4"></script>
+<script src="js/labs.js?v=4"></script>
+<script src="data/visuals.js?v=4"></script>
+<script src="js/auth.js?v=4"></script>
+<script src="js/teacher.js?v=4"></script>
+<script>boot();</script>
+</body>
+</html>
